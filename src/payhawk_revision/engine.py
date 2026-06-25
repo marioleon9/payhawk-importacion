@@ -134,7 +134,8 @@ class Config:
 CANONICAL_COLS = [
     "Expense ID", "Created Date", "Settlement Date", "Payment Status",
     "Payment Type", "Payment ID", "Total Amount (EUR)", "Net Amount (EUR)",
-    "Tax Amount (EUR)", "Cuota deducible A3", "Tax Rate Name", "Tax Rate Code", "Tax Rate %",
+    "Tax Amount (EUR)", "Cuota deducible A3", "Tax Rate Name", "Tax Rate Code",
+    "Tipo IVA A3", "Tax Rate %",
     "Paid Amount", "Paid Currency", "Expense Note", "Expense Line Note",
     "Expense Category", "Account Code", "Teams", "Teams External ID",
     "Departamento", "Departamento External ID", "ID gasto DOOFINDER",
@@ -1649,6 +1650,7 @@ def procesar(gastos_path_hoja, pagos_path_hoja, plan_path_hoja, cfg: Config,
     df = iva_nodeducible_tipo_cero(df, cambios, cfg)
     df = calcular_iva_intracomunitario_isp(df, cfg, cambios)
     df = calcular_cuota_deducible_a3(df, cambios, cfg)
+    df = asignar_tipo_iva_a3(df, cfg)
     df = rellenar_proveedores_vacios(df, inc, cfg, cambios)
     df = detectar_casos_manuales(df, inc, cfg)
     validar_vat_intracomunitario(df, inc, cfg)
@@ -1731,13 +1733,18 @@ def _gastos_preparado(df: pd.DataFrame, base: pd.DataFrame, cfg: Config) -> pd.D
         "comision": "Comisión divisa",
     }, inplace=True)
     out.drop(columns=["es_divisa", "encontrado_pago"], inplace=True)
-
-    # Código TIPO_IVA de A3 (campo que decide la deducibilidad en A3 y en el SII).
-    # Se añade al FINAL para no desplazar ninguna columna del layout previo. En la
-    # plantilla de Importia, el campo TIPO_IVA debe apuntar a esta columna.
-    if "Tax Rate Code" in out.columns:
-        out["Tipo IVA A3"] = out["Tax Rate Code"].apply(cfg.reglas.codigo_tipo_iva_a3)
     return out
+
+
+def asignar_tipo_iva_a3(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
+    """Rellena la columna 'Tipo IVA A3' traduciendo el Tax Rate Code (ya
+    normalizado) al código de operación TIPO_IVA que espera A3 (01, 04, 07…).
+    Es el campo que decide la deducibilidad en A3 y en el SII. Se calcula sobre
+    el dataframe principal para que aparezca tanto en GASTOS PREPARADO como en
+    las hojas por departamento y en RETENCIONES."""
+    df = df.copy()
+    df["Tipo IVA A3"] = df["Tax Rate Code"].apply(cfg.reglas.codigo_tipo_iva_a3)
+    return df
 
 
 def _hoja_divisas(base: pd.DataFrame, cfg: Config) -> pd.DataFrame:
