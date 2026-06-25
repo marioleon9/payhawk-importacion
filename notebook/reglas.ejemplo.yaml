@@ -1,0 +1,104 @@
+# =============================================================================
+# reglas.yaml — Reglas de negocio editables SIN tocar el código
+# =============================================================================
+#
+# QUÉ ES ESTE ARCHIVO
+# -------------------
+# Aquí viven las reglas que cambian con el negocio (cuentas por proveedor,
+# nombres de departamento, etc.). El programa funciona perfectamente SIN este
+# archivo: si no existe, usa los valores "de fábrica" que ya trae el código.
+#
+# CÓMO SE USA
+# -----------
+# 1. Renombra este archivo a:  reglas.yaml
+# 2. Colócalo en la carpeta base de Drive:
+#        REVISION PAGOS PAYHAWK/reglas.yaml
+# 3. Edita solo las líneas que necesites. Todo lo que NO pongas aquí conserva
+#    su valor por defecto.
+#
+# IMPORTANTE: este archivo (con cuentas reales) va en TU Google Drive, NO en
+# GitHub. En el repositorio solo está este ejemplo, sin datos sensibles.
+#
+# REGLA DE ORO DE FORMATO YAML:
+#   - dos espacios para indentar (NUNCA tabuladores)
+#   - los números de cuenta van SIEMPRE entre comillas: "627000003"
+# =============================================================================
+
+
+# --- Departamento de Payhawk -> nombre de la pestaña en el Excel -------------
+# La clave (izquierda) es como aparece el departamento en Payhawk.
+departamentos:
+  marketing: MARKETING
+  comercial: COMERCIAL
+  cx & support: CX & Support
+  desarrollo: DESARROLLO
+  direccion: DIRECCION
+  gastos generales: GASTOS GENERALES
+  producto: PRODUCTO
+  operaciones: OPERACIONES
+  recursos humanos: RRHH
+  financiero: FINANCIERO
+
+
+# --- Familia comparable de cada departamento de Payhawk ----------------------
+# Sirve para comparar el departamento con la cuenta contable. Normalmente no
+# hace falta tocarlo.
+familias_payhawk:
+  marketing: Marketing
+  comercial: Comercial
+  desarrollo: Desarrollo
+  operaciones: Operaciones
+  producto: Producto
+  financiero: Financiero
+  recursos humanos: Recursos Humanos
+  direccion: Direccion
+  gastos generales: Gastos generales
+  cx & support: CX & Support
+
+
+# --- Cómo deducir el departamento desde la descripción de una cuenta ---------
+# Si la descripción de la cuenta EMPIEZA por alguna de las "claves", se asigna
+# a esa "familia". Para detectar incoherencias cuenta <-> departamento.
+familias_cuenta:
+  - claves: [marketing]
+    familia: Marketing
+  - claves: [comercial]
+    familia: Comercial
+  - claves: [desarrollo, desarro]
+    familia: Desarrollo
+  - claves: [operaciones, oper]
+    familia: Operaciones
+  - claves: [producto]
+    familia: Producto
+  - claves: [financiero]
+    familia: Financiero
+  - claves: [rrhh]
+    familia: Recursos Humanos
+  - claves: [direccion]
+    familia: Direccion
+  - claves: [gastos generales, generales]
+    familia: Gastos generales
+  - claves: [cx & support, soporte, customer success, customer experience]
+    familia: CX & Support
+  - claves: [oficina usa]
+    familia: OFICINA USA
+
+
+# --- Cuenta sugerida por proveedor y departamento ----------------------------
+# La clave (anthropic, google cloud...) se busca como texto dentro del nombre
+# del proveedor o del "ID gasto DOOFINDER". Para cada departamento, qué cuenta
+# de gasto suele usarse. AQUÍ es donde están los datos sensibles reales.
+reglas_proveedor:
+  anthropic:
+    Marketing: "627000003"
+    Desarrollo: "629000036"
+    Operaciones: "629000135"
+  google cloud:
+    Operaciones: "629000106"
+    Desarrollo: "629000036"
+  lusha:
+    Operaciones: "629000106"
+  cloudi nextgen:
+    Desarrollo: "629000035"
+  asador gaztelu:
+    Direccion: "629000080"

@@ -1,0 +1,6 @@
+# Dependencias del motor de revisión Payhawk (versiones fijadas por rango para
+# evitar sorpresas en Colab si una librería publica una versión incompatible).
+pandas>=2.0,<3.0
+numpy>=1.24,<3.0
+openpyxl>=3.1,<4.0
+PyYAML>=6.0,<7.0
