@@ -678,11 +678,13 @@ def corregir_tax_code_por_pais(df: pd.DataFrame, inc: list, cambios: list,
 def iva_nodeducible_tipo_cero(df: pd.DataFrame, cambios: list,
                               cfg: Config) -> pd.DataFrame:
     """Para el IVA NO DEDUCIBLE, detecta tanto por Tax Rate Code como por
-    Tax Rate Name. Fuerza:
+    Tax Rate Name. Normaliza:
       - Tax Rate Code = IVA_NODED
       - Tax Rate Name = IVA NO DEDUCIBLE
-      - Tax Rate % = 0
-    La cuota real (Tax Amount) y el resto de importes no se tocan."""
+    La deducibilidad la marca el código TIPO_IVA de A3 (07), que se genera en la
+    columna 'Tipo IVA A3'. Aquí NO se toca el Tax Rate % (el tipo impositivo real
+    se conserva): el IVA no deducible sigue siendo una operación al 21%, solo que
+    su cuota no es deducible. La cuota real (Tax Amount) tampoco se modifica."""
     if not getattr(cfg, "IVA_NODED_TIPO_CERO", True):
         return df
     df = df.copy()
@@ -702,13 +704,6 @@ def iva_nodeducible_tipo_cero(df: pd.DataFrame, cambios: list,
                        columna="Tax Rate Code", valor_anterior=code_anterior,
                        valor_nuevo="IVA_NODED",
                        motivo="IVA no deducible: código fiscal forzado por Tax Rate Name")
-
-        anterior = df.at[idx, "Tax Rate %"]
-        if pd.isna(anterior) or float(anterior) != 0:
-            add_cambio(cambios, expense_id=df.at[idx, "Expense ID"],
-                       columna="Tax Rate %", valor_anterior=anterior, valor_nuevo=0,
-                       motivo="IVA no deducible: tipo a 0 (SII)")
-        df.at[idx, "Tax Rate %"] = 0
 
         if "Tax Rate Name" in df.columns:
             nombre_anterior = df.at[idx, "Tax Rate Name"]
@@ -1736,6 +1731,12 @@ def _gastos_preparado(df: pd.DataFrame, base: pd.DataFrame, cfg: Config) -> pd.D
         "comision": "Comisión divisa",
     }, inplace=True)
     out.drop(columns=["es_divisa", "encontrado_pago"], inplace=True)
+
+    # Código TIPO_IVA de A3 (campo que decide la deducibilidad en A3 y en el SII).
+    # Se añade al FINAL para no desplazar ninguna columna del layout previo. En la
+    # plantilla de Importia, el campo TIPO_IVA debe apuntar a esta columna.
+    if "Tax Rate Code" in out.columns:
+        out["Tipo IVA A3"] = out["Tax Rate Code"].apply(cfg.reglas.codigo_tipo_iva_a3)
     return out
 
 

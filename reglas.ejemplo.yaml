@@ -84,6 +84,29 @@ familias_cuenta:
     familia: OFICINA USA
 
 
+# --- Traducción del código de IVA a TIPO_IVA de A3 ---------------------------
+# ESTE ES EL CAMPO QUE DECIDE LA DEDUCIBILIDAD EN A3 Y EN EL SII.
+# A la izquierda, el código interno (Tax Rate Code de Payhawk ya limpio).
+# A la derecha, el código de operación que espera A3 en facturas recibidas:
+#   01 = Operaciones interiores IVA deducible
+#   03 = Adquisición intracomunitaria de bienes
+#   04 = Inversión del sujeto pasivo
+#   06 = Importaciones
+#   07 = IVA NO deducible  (clave para que el SII reciba cuota deducible = 0)
+#   08 = Adquisición intracomunitaria de servicios
+# Si tu A3 usa números distintos, cámbialos aquí (entre comillas).
+tipo_iva_a3:
+  OP_INT: "01"
+  OP_INT0: "01"
+  IVA_NODED: "07"
+  INV_SUJ_PAS: "04"
+  INTRA_BIE: "03"
+  INTRA_SER: "08"
+  NOSUJ_SDED: "01"
+# Código que se usa si aparece un Tax Rate Code no contemplado arriba:
+tipo_iva_a3_fallback: "01"
+
+
 # --- Cuenta sugerida por proveedor y departamento ----------------------------
 # La clave (anthropic, google cloud...) se busca como texto dentro del nombre
 # del proveedor o del "ID gasto DOOFINDER". Para cada departamento, qué cuenta

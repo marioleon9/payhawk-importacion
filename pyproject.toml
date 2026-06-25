@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "payhawk-revision"
-version = "1.0.0"
+version = "1.1.0"
 description = "Revisión y preparación de gastos de Payhawk para importación en A3/Importia"
 readme = "README.md"
 requires-python = ">=3.9"
