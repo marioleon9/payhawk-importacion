@@ -57,6 +57,39 @@ def test_categoria_por_pais_y_vat():
     assert _categoria_por_vat("NIFALGO") == ""   # NIF provisional, sin categoría
 
 
+def test_cuenta_proveedor_no_valida_se_corrige():
+    from payhawk_revision.engine import rellenar_proveedores_vacios
+    cfg = Config()
+    df = _df([
+        # ticket con cuenta random -> 410000000
+        {"Supplier External ID": "60306282", "Supplier VAT": "X", "Supplier Name": "ROSSMANN",
+         "Document Type": "Receipt", "Tax Rate Code": "NOSUJ_SDED",
+         "Expense Note": "x", "Document Number": "1", "ID gasto DOOFINDER": "TICKET_X"},
+        # factura normal con CIF en la cuenta -> también se corrige (regla global)
+        {"Supplier External ID": "A80241789", "Supplier VAT": "Y", "Supplier Name": "SERVEO",
+         "Document Type": "Invoice", "Tax Rate Code": "OP_INT",
+         "Expense Note": "x", "Document Number": "2", "ID gasto DOOFINDER": "FRA-1"},
+        # cuenta 410 válida -> se respeta
+        {"Supplier External ID": "410004692", "Supplier VAT": "Z", "Supplier Name": "GALBEN",
+         "Document Type": "Invoice", "Tax Rate Code": "OP_INT",
+         "Expense Note": "x", "Document Number": "3", "ID gasto DOOFINDER": "FRA-2"},
+    ])
+    out = rellenar_proveedores_vacios(df, [], cfg, [])
+    assert out.loc[0, "Supplier External ID"] == "410000000"   # ticket random -> genérica
+    assert out.loc[1, "Supplier External ID"] == "410000000"   # CIF en factura -> genérica
+    assert out.loc[2, "Supplier External ID"] == "410004692"   # 410 válida -> intacta
+
+
+def test_traduccion_op_int0_a_op_int():
+    from payhawk_revision.engine import traducir_tax_code_a_a3
+    cfg = Config()
+    df = _df([{"Tax Rate Code": "OP_INT0"}, {"Tax Rate Code": "OP_INT"},
+              {"Tax Rate Code": "NOSUJ_SDED"}, {"Tax Rate Code": "IVA_NODED"}])
+    out = traducir_tax_code_a_a3(df, cfg, [])
+    # OP_INT0 (exento) -> OP_INT; el resto ya coincide con A3 y no cambia
+    assert out["Tax Rate Code"].tolist() == ["OP_INT", "OP_INT", "NOSUJ_SDED", "IVA_NODED"]
+
+
 def test_nombre_hoja_usa_reglas():
     reglas = Reglas()
     assert nombre_hoja_departamento("Marketing", reglas) == "MARKETING"

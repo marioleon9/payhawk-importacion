@@ -86,28 +86,13 @@ DEFAULT_FAMILIAS_PAYHAWK = {
     "cx&support": "CX & Support",
 }
 
-# Traducción del código de IVA interno (Tax Rate Code de Payhawk, ya normalizado)
-# al código de operación TIPO_IVA que espera A3 en la importación de facturas
-# recibidas. ESTE ES EL CAMPO QUE DECIDE LA DEDUCIBILIDAD EN A3 Y EN EL SII:
-#   01 = Operaciones interiores IVA deducible
-#   03 = Adquisición intracomunitaria de bienes
-#   04 = Inversión del sujeto pasivo
-#   06 = Importaciones
-#   07 = IVA NO deducible        <- imprescindible para que el SII reciba cuota deducible 0
-#   08 = Adquisición intracomunitaria de servicios
-# OP_INT0 (exento) y NOSUJ_SDED (tickets) se asignan a 01 de forma provisional:
-# confírmalo en tu A3 y, si procede, cámbialo en reglas.yaml.
-DEFAULT_TIPO_IVA_A3 = {
-    "OP_INT": "01",
-    "OP_INT0": "01",
-    "IVA_NODED": "07",
-    "INV_SUJ_PAS": "04",
-    "INTRA_BIE": "03",
-    "INTRA_SER": "08",
-    "NOSUJ_SDED": "01",
+# Traducción de códigos de IVA internos (Tax Rate Code) al código de operación
+# EXACTO que acepta A3 (a3innuva | Importia) en facturas recibidas. La mayoría
+# coinciden tal cual; solo OP_INT0 (exento) no existe en A3 y se manda como
+# OP_INT (operación interior). Editable desde reglas.yaml si cambiara alguno.
+DEFAULT_TRADUCCION_TAX_CODE = {
+    "OP_INT0": "OP_INT",
 }
-# Código que se usa cuando el Tax Rate Code no está en el mapa anterior.
-DEFAULT_TIPO_IVA_A3_FALLBACK = "01"
 
 
 # Reglas de cuenta por proveedor (subcadena normalizada buscada en
@@ -138,15 +123,14 @@ class Reglas:
         default_factory=lambda: dict(DEFAULT_FAMILIAS_PAYHAWK))
     reglas_proveedor: dict = field(
         default_factory=lambda: {k: dict(v) for k, v in DEFAULT_REGLAS_PROVEEDOR.items()})
-    tipo_iva_a3: dict = field(
-        default_factory=lambda: dict(DEFAULT_TIPO_IVA_A3))
-    tipo_iva_a3_fallback: str = DEFAULT_TIPO_IVA_A3_FALLBACK
+    traduccion_tax_code: dict = field(
+        default_factory=lambda: dict(DEFAULT_TRADUCCION_TAX_CODE))
 
-    def codigo_tipo_iva_a3(self, tax_rate_code) -> str:
-        """Código TIPO_IVA de A3 para un Tax Rate Code interno. Si no está en el
-        mapa, devuelve el código de reserva (configurable)."""
-        clave = str(tax_rate_code or "").strip().upper()
-        return self.tipo_iva_a3.get(clave, self.tipo_iva_a3_fallback)
+    def tax_code_a3(self, code) -> str:
+        """Código de operación que espera A3 para un Tax Rate Code interno. Si no
+        hay traducción definida, se devuelve el mismo código (ya coincide)."""
+        c = str(code or "").strip()
+        return self.traduccion_tax_code.get(c, c)
 
     @property
     def familias_comparables(self) -> set:
@@ -218,12 +202,10 @@ def cargar_reglas(ruta: Optional[Path] = None) -> Reglas:
         if nuevas:
             reglas.familias_cuenta = nuevas
 
-    # --- traducción Tax Rate Code -> código TIPO_IVA de A3 ---
-    if isinstance(datos.get("tipo_iva_a3"), dict):
-        for k, v in datos["tipo_iva_a3"].items():
-            reglas.tipo_iva_a3[str(k).strip().upper()] = str(v)
-    if datos.get("tipo_iva_a3_fallback") is not None:
-        reglas.tipo_iva_a3_fallback = str(datos["tipo_iva_a3_fallback"])
+    # --- traducción Tax Rate Code -> código de operación de A3 ---
+    if isinstance(datos.get("traduccion_tax_code"), dict):
+        for k, v in datos["traduccion_tax_code"].items():
+            reglas.traduccion_tax_code[str(k).strip()] = str(v).strip()
 
     # --- reglas de cuenta por proveedor ---
     if isinstance(datos.get("reglas_proveedor"), dict):

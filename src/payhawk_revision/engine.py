@@ -134,8 +134,7 @@ class Config:
 CANONICAL_COLS = [
     "Expense ID", "Created Date", "Settlement Date", "Payment Status",
     "Payment Type", "Payment ID", "Total Amount (EUR)", "Net Amount (EUR)",
-    "Tax Amount (EUR)", "Cuota deducible A3", "Tax Rate Name", "Tax Rate Code",
-    "Tipo IVA A3", "Tax Rate %",
+    "Tax Amount (EUR)", "Cuota deducible A3", "Tax Rate Name", "Tax Rate Code", "Tax Rate %",
     "Paid Amount", "Paid Currency", "Expense Note", "Expense Line Note",
     "Expense Category", "Account Code", "Teams", "Teams External ID",
     "Departamento", "Departamento External ID", "ID gasto DOOFINDER",
@@ -679,13 +678,11 @@ def corregir_tax_code_por_pais(df: pd.DataFrame, inc: list, cambios: list,
 def iva_nodeducible_tipo_cero(df: pd.DataFrame, cambios: list,
                               cfg: Config) -> pd.DataFrame:
     """Para el IVA NO DEDUCIBLE, detecta tanto por Tax Rate Code como por
-    Tax Rate Name. Normaliza:
+    Tax Rate Name. Fuerza:
       - Tax Rate Code = IVA_NODED
       - Tax Rate Name = IVA NO DEDUCIBLE
-    La deducibilidad la marca el código TIPO_IVA de A3 (07), que se genera en la
-    columna 'Tipo IVA A3'. Aquí NO se toca el Tax Rate % (el tipo impositivo real
-    se conserva): el IVA no deducible sigue siendo una operación al 21%, solo que
-    su cuota no es deducible. La cuota real (Tax Amount) tampoco se modifica."""
+      - Tax Rate % = 0
+    La cuota real (Tax Amount) y el resto de importes no se tocan."""
     if not getattr(cfg, "IVA_NODED_TIPO_CERO", True):
         return df
     df = df.copy()
@@ -705,6 +702,13 @@ def iva_nodeducible_tipo_cero(df: pd.DataFrame, cambios: list,
                        columna="Tax Rate Code", valor_anterior=code_anterior,
                        valor_nuevo="IVA_NODED",
                        motivo="IVA no deducible: código fiscal forzado por Tax Rate Name")
+
+        anterior = df.at[idx, "Tax Rate %"]
+        if pd.isna(anterior) or float(anterior) != 0:
+            add_cambio(cambios, expense_id=df.at[idx, "Expense ID"],
+                       columna="Tax Rate %", valor_anterior=anterior, valor_nuevo=0,
+                       motivo="IVA no deducible: tipo a 0 (SII)")
+        df.at[idx, "Tax Rate %"] = 0
 
         if "Tax Rate Name" in df.columns:
             nombre_anterior = df.at[idx, "Tax Rate Name"]
@@ -749,14 +753,42 @@ def calcular_cuota_deducible_a3(df: pd.DataFrame, cambios: list,
     return df
 
 
+def _cuenta_proveedor_valida(v) -> bool:
+    """True si el valor es una cuenta contable de proveedor/acreedor válida:
+    9 dígitos del grupo 4 (p. ej. 410004692). Un CIF (A80241789) o un número
+    suelto (60306282) NO son válidos y A3 los rechaza."""
+    s = str(v).strip()
+    return bool(re.match(r"^4\d{8}$", s))
+
+
+def traducir_tax_code_a_a3(df: pd.DataFrame, cfg: Config, cambios: list) -> pd.DataFrame:
+    """Traduce el Tax Rate Code al código de operación EXACTO que acepta A3.
+    Casi todos coinciden; el único que A3 no reconoce es OP_INT0 (exento), que
+    se manda como OP_INT. La tabla es editable desde reglas.yaml.
+    Se aplica al final, cuando el resto de la lógica ya ha usado los códigos
+    originales (detección de tickets, retenciones, etc.)."""
+    df = df.copy()
+    for idx, fila in df.iterrows():
+        original = str(fila.get("Tax Rate Code", "")).strip()
+        nuevo = cfg.reglas.tax_code_a3(original)
+        if nuevo != original:
+            df.at[idx, "Tax Rate Code"] = nuevo
+            add_cambio(cambios, expense_id=fila["Expense ID"],
+                       columna="Tax Rate Code", valor_anterior=original,
+                       valor_nuevo=nuevo,
+                       motivo="Código de operación adaptado al que acepta A3")
+    return df
+
+
 def rellenar_proveedores_vacios(df: pd.DataFrame, inc: list, cfg: Config,
                                 cambios: list) -> pd.DataFrame:
     """Rellena Supplier External ID y Supplier VAT vacíos y marca incidencias.
     También marca Expense Note y Document Number vacíos."""
     df = df.copy()
     for idx, fila in df.iterrows():
-        # Supplier External ID
-        if _is_blank(fila["Supplier External ID"]):
+        # Supplier External ID (cuenta de proveedor del grupo 410/4xx)
+        ext = fila["Supplier External ID"]
+        if _is_blank(ext):
             df.at[idx, "Supplier External ID"] = cfg.CUENTA_PROVEEDOR_GENERICA
             add_cambio(cambios, expense_id=fila["Expense ID"],
                        columna="Supplier External ID", valor_anterior="",
@@ -767,6 +799,19 @@ def rellenar_proveedores_vacios(df: pd.DataFrame, inc: list, cfg: Config,
                            cuenta=cfg.CUENTA_PROVEEDOR_GENERICA,
                            accion=("Asignada cuenta genérica peligrosa "
                                    f"{cfg.CUENTA_PROVEEDOR_GENERICA}: asignar proveedor real"))
+        elif not _cuenta_proveedor_valida(ext):
+            # La "cuenta" de proveedor no es un 4xxxxxxxx válido (es un número
+            # suelto, un CIF, etc.): A3 la rechaza. Se sustituye por la genérica.
+            df.at[idx, "Supplier External ID"] = cfg.CUENTA_PROVEEDOR_GENERICA
+            add_cambio(cambios, expense_id=fila["Expense ID"],
+                       columna="Supplier External ID", valor_anterior=ext,
+                       valor_nuevo=cfg.CUENTA_PROVEEDOR_GENERICA,
+                       motivo="Cuenta de proveedor no válida (no es 4xxxxxxxx) -> cuenta genérica")
+            add_incidencia(inc, fila, tipo="Cuenta de proveedor no válida",
+                           gravedad=GRAVEDAD_ALTA,
+                           cuenta=cfg.CUENTA_PROVEEDOR_GENERICA,
+                           accion=(f"Cuenta '{ext}' no es un 410 válido: "
+                                   f"asignada {cfg.CUENTA_PROVEEDOR_GENERICA} (revisar proveedor real)"))
         # Supplier VAT
         if _is_blank(fila["Supplier VAT"]):
             nif = _normalizar_nombre_proveedor(fila["Supplier Name"])
@@ -1650,12 +1695,12 @@ def procesar(gastos_path_hoja, pagos_path_hoja, plan_path_hoja, cfg: Config,
     df = iva_nodeducible_tipo_cero(df, cambios, cfg)
     df = calcular_iva_intracomunitario_isp(df, cfg, cambios)
     df = calcular_cuota_deducible_a3(df, cambios, cfg)
-    df = asignar_tipo_iva_a3(df, cfg)
     df = rellenar_proveedores_vacios(df, inc, cfg, cambios)
     df = detectar_casos_manuales(df, inc, cfg)
     validar_vat_intracomunitario(df, inc, cfg)
     df = aplicar_divisas(df, inc, cfg, cambios)
     df = colapsar_paid_amount_multilinea(df, cfg, cambios)
+    df = traducir_tax_code_a_a3(df, cfg, cambios)
 
     # --- pagos y comisiones ---
     base = cruzar_pagos(df, pagos, inc, cfg)
@@ -1734,17 +1779,6 @@ def _gastos_preparado(df: pd.DataFrame, base: pd.DataFrame, cfg: Config) -> pd.D
     }, inplace=True)
     out.drop(columns=["es_divisa", "encontrado_pago"], inplace=True)
     return out
-
-
-def asignar_tipo_iva_a3(df: pd.DataFrame, cfg: Config) -> pd.DataFrame:
-    """Rellena la columna 'Tipo IVA A3' traduciendo el Tax Rate Code (ya
-    normalizado) al código de operación TIPO_IVA que espera A3 (01, 04, 07…).
-    Es el campo que decide la deducibilidad en A3 y en el SII. Se calcula sobre
-    el dataframe principal para que aparezca tanto en GASTOS PREPARADO como en
-    las hojas por departamento y en RETENCIONES."""
-    df = df.copy()
-    df["Tipo IVA A3"] = df["Tax Rate Code"].apply(cfg.reglas.codigo_tipo_iva_a3)
-    return df
 
 
 def _hoja_divisas(base: pd.DataFrame, cfg: Config) -> pd.DataFrame:

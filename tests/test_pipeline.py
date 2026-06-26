@@ -41,13 +41,10 @@ def test_iva_no_deducible_a_cero(libros, cfg_test):
     _, dfs = procesar(libros["gastos"], libros["pagos"], libros["plan"],
                       cfg_test, 63, libros["carpeta"])
     df = dfs["df"].set_index("Expense ID")
-    # EID 102: IVA_NODED -> la cuota deducible va a 0 para Importia/SII,
-    # pero el tipo (%) y la cuota real se conservan (sigue siendo una operación
-    # al 21%, solo que su IVA no es deducible). La deducibilidad la marca el
-    # código TIPO_IVA de A3 (07), no el porcentaje.
+    # EID 102: IVA_NODED -> tipo 0 y cuota deducible 0 (pero la cuota real se mantiene)
     assert df.loc[102, "Tax Rate Code"] == "IVA_NODED"
+    assert float(df.loc[102, "Tax Rate %"]) == 0
     assert float(df.loc[102, "Cuota deducible A3"]) == 0
-    assert float(df.loc[102, "Tax Rate %"]) == 21
 
 
 def test_multilinea_colapsa_paid_amount(libros, cfg_test):
@@ -58,18 +55,6 @@ def test_multilinea_colapsa_paid_amount(libros, cfg_test):
     paids = sorted(lineas["Paid Amount"].tolist())
     # una línea con el total (50) y la otra a 0
     assert paids == [0.0, 50.0]
-
-
-def test_tipo_iva_a3_no_deducible_y_normal(libros, cfg_test):
-    import pandas as pd
-    ruta, _ = procesar(libros["gastos"], libros["pagos"], libros["plan"],
-                       cfg_test, 63, libros["carpeta"])
-    hoja = pd.read_excel(ruta, sheet_name="GASTOS PREPARADO").set_index("Expense ID")
-    assert "Tipo IVA A3" in hoja.columns
-    # EID 102 es IVA no deducible -> debe llevar TIPO_IVA 07
-    assert str(hoja.loc[102, "Tipo IVA A3"]).zfill(2) == "07"
-    # EID 100 es operación interior con IVA -> 01
-    assert str(hoja.loc[100, "Tipo IVA A3"]).zfill(2) == "01"
 
 
 def test_hojas_excel_presentes(libros, cfg_test):
